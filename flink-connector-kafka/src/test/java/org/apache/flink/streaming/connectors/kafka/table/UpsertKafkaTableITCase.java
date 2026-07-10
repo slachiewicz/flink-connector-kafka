@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.connectors.kafka.table;
 
 import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.InsertConflictStrategy;
 import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableResult;
@@ -176,7 +177,7 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
 
         tEnv.executeSql(createTable);
 
-        table.executeInsert("upsert_kafka").await();
+        table.executeInsert("upsert_kafka", InsertConflictStrategy.deduplicate()).await();
 
         final List<Row> result = collectRows(tEnv.sqlQuery("SELECT * FROM upsert_kafka"), 3);
         final List<Row> expected =
@@ -254,7 +255,7 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
 
         tEnv.executeSql(createTable);
 
-        table.executeInsert("upsert_kafka").await();
+        table.executeInsert("upsert_kafka", InsertConflictStrategy.deduplicate()).await();
 
         final List<Row> result = collectRows(tEnv.sqlQuery("SELECT * FROM upsert_kafka"), 3);
         final List<Row> expected =
@@ -312,7 +313,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, 'name 1', TIMESTAMP '2020-03-08 13:12:11.123', 100, 41, 'payload 1'),\n"
                         + " (2, 'name 2', TIMESTAMP '2020-03-09 13:12:11.123', 101, 42, 'payload 2'),\n"
                         + " (3, 'name 3', TIMESTAMP '2020-03-10 13:12:11.123', 102, 43, 'payload 3'),\n"
-                        + " (2, 'name 2', TIMESTAMP '2020-03-11 13:12:11.123', 101, 42, 'payload')";
+                        + " (2, 'name 2', TIMESTAMP '2020-03-11 13:12:11.123', 101, 42, 'payload')\n"
+                        + "ON CONFLICT DO DEDUPLICATE";
         tEnv.executeSql(initialValues).await();
 
         // ---------- Consume stream from Kafka -------------------
@@ -413,7 +415,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, 'name 1', TIMESTAMP '2020-03-08 13:12:11.123', 100, 'payload 1'),\n"
                         + " (2, 'name 2', TIMESTAMP '2020-03-09 13:12:11.123', 101, 'payload 2'),\n"
                         + " (3, 'name 3', TIMESTAMP '2020-03-10 13:12:11.123', 102, 'payload 3'),\n"
-                        + " (1, 'name 1', TIMESTAMP '2020-03-11 13:12:11.123', 100, 'payload')";
+                        + " (1, 'name 1', TIMESTAMP '2020-03-11 13:12:11.123', 100, 'payload')\n"
+                        + "ON CONFLICT DO DEDUPLICATE";
         tEnv.executeSql(initialValues).await();
 
         // ---------- Consume stream from Kafka -------------------
@@ -502,7 +505,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, 100, 'payload 1'),\n"
                         + " (1, 100, 'payload 1-new'),\n"
                         + " (2, 101, 'payload 2'),\n"
-                        + " (3, 102, 'payload 3')";
+                        + " (3, 102, 'payload 3')\n"
+                        + "ON CONFLICT DO DEDUPLICATE";
         tEnv.executeSql(insertValuesSql).await();
 
         // results should only have records up to offset=2
@@ -564,7 +568,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, TIMESTAMP '2023-03-08 08:10:10.666', 100, 'payload 1'),\n"
                         + " (2, TIMESTAMP '2023-03-09 13:12:11.123', 101, 'payload 2'),\n"
                         + " (1, TIMESTAMP '2023-03-10 12:09:50.321', 100, 'payload 1-new'),\n"
-                        + " (2, TIMESTAMP '2023-03-11 17:15:13.457', 101, 'payload 2-new')";
+                        + " (2, TIMESTAMP '2023-03-11 17:15:13.457', 101, 'payload 2-new')\n"
+                        + "ON CONFLICT DO DEDUPLICATE";
         tEnv.executeSql(insertValuesSql).await();
 
         // results should only have records up to timestamp 2023-03-10T14:00:00.000
@@ -652,7 +657,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, TIMESTAMP '2023-03-11 08:10:10.666', 100, 'payload 1'),\n"
                         + " (2, TIMESTAMP '2023-03-12 13:12:11.123', 101, 'payload 2'),\n"
                         + " (1, TIMESTAMP '2023-03-13 12:09:50.321', 100, 'payload 1-new'),\n"
-                        + " (2, TIMESTAMP '2023-03-14 17:15:13.457', 101, 'payload 2-new')";
+                        + " (2, TIMESTAMP '2023-03-14 17:15:13.457', 101, 'payload 2-new')\n"
+                        + "ON CONFLICT DO DEDUPLICATE";
         tEnv.executeSql(insertValuesSql).await();
 
         // results should be empty
