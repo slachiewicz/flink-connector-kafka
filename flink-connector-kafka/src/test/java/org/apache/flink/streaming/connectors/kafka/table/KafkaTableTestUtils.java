@@ -52,13 +52,14 @@ public class KafkaTableTestUtils {
 
     /**
      * Since Flink 2.3 (FLIP-558), an INSERT statement whose upsert key differs from the sink's
-     * primary key fails at planning time unless it specifies an {@code ON CONFLICT} strategy.
-     * Flink versions before 2.3 don't have this syntax at all and would fail to parse it, so the
+     * primary key fails at planning time unless it specifies an {@code ON CONFLICT} strategy. Flink
+     * versions before 2.3 don't have this syntax at all and would fail to parse it, so the
      * clause/strategy is only applied when running against a Flink version that supports it,
-     * detected reflectively to keep this test source compiling against both pre-2.3 and 2.3+
-     * Flink versions.
+     * detected reflectively to keep this test source compiling against both pre-2.3 and 2.3+ Flink
+     * versions.
      */
-    private static final boolean SUPPORTS_INSERT_CONFLICT_STRATEGY = supportsInsertConflictStrategy();
+    private static final boolean SUPPORTS_INSERT_CONFLICT_STRATEGY =
+            supportsInsertConflictStrategy();
 
     private static boolean supportsInsertConflictStrategy() {
         try {
@@ -94,7 +95,8 @@ public class KafkaTableTestUtils {
             Class<?> strategyClass =
                     Class.forName("org.apache.flink.table.api.InsertConflictStrategy");
             Object deduplicate = strategyClass.getMethod("deduplicate").invoke(null);
-            Method executeInsert = Table.class.getMethod("executeInsert", String.class, strategyClass);
+            Method executeInsert =
+                    Table.class.getMethod("executeInsert", String.class, strategyClass);
             return (TableResult) executeInsert.invoke(table, sinkName, deduplicate);
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
