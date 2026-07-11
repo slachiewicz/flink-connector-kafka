@@ -42,6 +42,7 @@ import java.util.Properties;
 
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.readLines;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.waitingExpectedResults;
+import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.withDeduplicateOnConflict;
 
 /** IT cases for Kafka with changelog format for Table API & SQL. */
 class KafkaChangelogTableITCase extends KafkaTableTestBase {
@@ -248,11 +249,11 @@ class KafkaChangelogTableITCase extends KafkaTableTestBase {
         tEnv.executeSql(sinkDDL);
         TableResult tableResult =
                 tEnv.executeSql(
-                        "INSERT INTO sink "
-                                + "SELECT origin_topic, origin_database, origin_table, origin_sql_type, "
-                                + "origin_pk_names, origin_ts, origin_es, name "
-                                + "FROM canal_source "
-                                + "ON CONFLICT DO DEDUPLICATE");
+                        withDeduplicateOnConflict(
+                                "INSERT INTO sink "
+                                        + "SELECT origin_topic, origin_database, origin_table, origin_sql_type, "
+                                        + "origin_pk_names, origin_ts, origin_es, name "
+                                        + "FROM canal_source"));
 
         /*
          * Canal captures change data on the `products` table:
@@ -384,11 +385,11 @@ class KafkaChangelogTableITCase extends KafkaTableTestBase {
         tEnv.executeSql(sinkDDL);
         TableResult tableResult =
                 tEnv.executeSql(
-                        "INSERT INTO sink "
-                                + "SELECT origin_topic, origin_database, origin_table, origin_primary_key_columns, "
-                                + "origin_ts, name "
-                                + "FROM maxwell_source "
-                                + "ON CONFLICT DO DEDUPLICATE");
+                        withDeduplicateOnConflict(
+                                "INSERT INTO sink "
+                                        + "SELECT origin_topic, origin_database, origin_table, origin_primary_key_columns, "
+                                        + "origin_ts, name "
+                                        + "FROM maxwell_source"));
 
         /*
          * Maxwell captures change data on the `products` table:

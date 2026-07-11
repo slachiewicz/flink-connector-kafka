@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.connectors.kafka.table;
 
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.InsertConflictStrategy;
 import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableResult;
@@ -51,7 +50,9 @@ import static org.apache.flink.api.common.typeinfo.Types.STRING;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.collectAllRows;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.collectRows;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.comparedWithKeyAndOrder;
+import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.executeInsertWithDeduplicateOnConflict;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.waitingExpectedResults;
+import static org.apache.flink.streaming.connectors.kafka.table.KafkaTableTestUtils.withDeduplicateOnConflict;
 import static org.apache.flink.table.planner.factories.TestValuesTableFactory.changelogRow;
 import static org.apache.flink.table.utils.TableTestMatchers.deepEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -177,7 +178,7 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
 
         tEnv.executeSql(createTable);
 
-        table.executeInsert("upsert_kafka", InsertConflictStrategy.deduplicate()).await();
+        executeInsertWithDeduplicateOnConflict(table, "upsert_kafka").await();
 
         final List<Row> result = collectRows(tEnv.sqlQuery("SELECT * FROM upsert_kafka"), 3);
         final List<Row> expected =
@@ -255,7 +256,7 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
 
         tEnv.executeSql(createTable);
 
-        table.executeInsert("upsert_kafka", InsertConflictStrategy.deduplicate()).await();
+        executeInsertWithDeduplicateOnConflict(table, "upsert_kafka").await();
 
         final List<Row> result = collectRows(tEnv.sqlQuery("SELECT * FROM upsert_kafka"), 3);
         final List<Row> expected =
@@ -313,9 +314,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, 'name 1', TIMESTAMP '2020-03-08 13:12:11.123', 100, 41, 'payload 1'),\n"
                         + " (2, 'name 2', TIMESTAMP '2020-03-09 13:12:11.123', 101, 42, 'payload 2'),\n"
                         + " (3, 'name 3', TIMESTAMP '2020-03-10 13:12:11.123', 102, 43, 'payload 3'),\n"
-                        + " (2, 'name 2', TIMESTAMP '2020-03-11 13:12:11.123', 101, 42, 'payload')\n"
-                        + "ON CONFLICT DO DEDUPLICATE";
-        tEnv.executeSql(initialValues).await();
+                        + " (2, 'name 2', TIMESTAMP '2020-03-11 13:12:11.123', 101, 42, 'payload')";
+        tEnv.executeSql(withDeduplicateOnConflict(initialValues)).await();
 
         // ---------- Consume stream from Kafka -------------------
 
@@ -415,9 +415,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, 'name 1', TIMESTAMP '2020-03-08 13:12:11.123', 100, 'payload 1'),\n"
                         + " (2, 'name 2', TIMESTAMP '2020-03-09 13:12:11.123', 101, 'payload 2'),\n"
                         + " (3, 'name 3', TIMESTAMP '2020-03-10 13:12:11.123', 102, 'payload 3'),\n"
-                        + " (1, 'name 1', TIMESTAMP '2020-03-11 13:12:11.123', 100, 'payload')\n"
-                        + "ON CONFLICT DO DEDUPLICATE";
-        tEnv.executeSql(initialValues).await();
+                        + " (1, 'name 1', TIMESTAMP '2020-03-11 13:12:11.123', 100, 'payload')";
+        tEnv.executeSql(withDeduplicateOnConflict(initialValues)).await();
 
         // ---------- Consume stream from Kafka -------------------
 
@@ -505,9 +504,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, 100, 'payload 1'),\n"
                         + " (1, 100, 'payload 1-new'),\n"
                         + " (2, 101, 'payload 2'),\n"
-                        + " (3, 102, 'payload 3')\n"
-                        + "ON CONFLICT DO DEDUPLICATE";
-        tEnv.executeSql(insertValuesSql).await();
+                        + " (3, 102, 'payload 3')";
+        tEnv.executeSql(withDeduplicateOnConflict(insertValuesSql)).await();
 
         // results should only have records up to offset=2
         final List<Row> results = collectAllRows(tEnv.sqlQuery("SELECT * from upsert_kafka"));
@@ -568,9 +566,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, TIMESTAMP '2023-03-08 08:10:10.666', 100, 'payload 1'),\n"
                         + " (2, TIMESTAMP '2023-03-09 13:12:11.123', 101, 'payload 2'),\n"
                         + " (1, TIMESTAMP '2023-03-10 12:09:50.321', 100, 'payload 1-new'),\n"
-                        + " (2, TIMESTAMP '2023-03-11 17:15:13.457', 101, 'payload 2-new')\n"
-                        + "ON CONFLICT DO DEDUPLICATE";
-        tEnv.executeSql(insertValuesSql).await();
+                        + " (2, TIMESTAMP '2023-03-11 17:15:13.457', 101, 'payload 2-new')";
+        tEnv.executeSql(withDeduplicateOnConflict(insertValuesSql)).await();
 
         // results should only have records up to timestamp 2023-03-10T14:00:00.000
         final List<Row> results = collectAllRows(tEnv.sqlQuery("SELECT * from upsert_kafka"));
@@ -657,9 +654,8 @@ class UpsertKafkaTableITCase extends KafkaTableTestBase {
                         + " (1, TIMESTAMP '2023-03-11 08:10:10.666', 100, 'payload 1'),\n"
                         + " (2, TIMESTAMP '2023-03-12 13:12:11.123', 101, 'payload 2'),\n"
                         + " (1, TIMESTAMP '2023-03-13 12:09:50.321', 100, 'payload 1-new'),\n"
-                        + " (2, TIMESTAMP '2023-03-14 17:15:13.457', 101, 'payload 2-new')\n"
-                        + "ON CONFLICT DO DEDUPLICATE";
-        tEnv.executeSql(insertValuesSql).await();
+                        + " (2, TIMESTAMP '2023-03-14 17:15:13.457', 101, 'payload 2-new')";
+        tEnv.executeSql(withDeduplicateOnConflict(insertValuesSql)).await();
 
         // results should be empty
         final List<Row> results = collectAllRows(tEnv.sqlQuery("SELECT * from upsert_kafka"));

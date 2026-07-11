@@ -29,6 +29,7 @@ import org.apache.flink.util.CloseableIterator;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,6 +49,58 @@ import static org.assertj.core.api.HamcrestCondition.matching;
 
 /** Utils for kafka table tests. */
 public class KafkaTableTestUtils {
+
+    /**
+     * Since Flink 2.3 (FLIP-558), an INSERT statement whose upsert key differs from the sink's
+     * primary key fails at planning time unless it specifies an {@code ON CONFLICT} strategy.
+     * Flink versions before 2.3 don't have this syntax at all and would fail to parse it, so the
+     * clause/strategy is only applied when running against a Flink version that supports it,
+     * detected reflectively to keep this test source compiling against both pre-2.3 and 2.3+
+     * Flink versions.
+     */
+    private static final boolean SUPPORTS_INSERT_CONFLICT_STRATEGY = supportsInsertConflictStrategy();
+
+    private static boolean supportsInsertConflictStrategy() {
+        try {
+            Class.forName("org.apache.flink.table.api.InsertConflictStrategy");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Appends {@code ON CONFLICT DO DEDUPLICATE} to the given {@code INSERT INTO ... SELECT/
+     * VALUES} statement when running against a Flink version that requires it (2.3+, see {@link
+     * #SUPPORTS_INSERT_CONFLICT_STRATEGY}), reproducing the automatic {@code
+     * SinkUpsertMaterializer} behavior of older Flink versions.
+     */
+    public static String withDeduplicateOnConflict(String insertSql) {
+        return SUPPORTS_INSERT_CONFLICT_STRATEGY
+                ? insertSql + "\nON CONFLICT DO DEDUPLICATE"
+                : insertSql;
+    }
+
+    /**
+     * Equivalent of {@code table.executeInsert(sinkName, InsertConflictStrategy.deduplicate())},
+     * invoked reflectively so this test source keeps compiling against Flink versions before 2.3
+     * that don't have {@code InsertConflictStrategy}. See {@link #withDeduplicateOnConflict}.
+     */
+    public static TableResult executeInsertWithDeduplicateOnConflict(Table table, String sinkName) {
+        if (!SUPPORTS_INSERT_CONFLICT_STRATEGY) {
+            return table.executeInsert(sinkName);
+        }
+        try {
+            Class<?> strategyClass =
+                    Class.forName("org.apache.flink.table.api.InsertConflictStrategy");
+            Object deduplicate = strategyClass.getMethod("deduplicate").invoke(null);
+            Method executeInsert = Table.class.getMethod("executeInsert", String.class, strategyClass);
+            return (TableResult) executeInsert.invoke(table, sinkName, deduplicate);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static List<Row> collectRows(Table table, int expectedSize) throws Exception {
         final TableResult result = table.execute();
         final List<Row> collectedRows = new ArrayList<>();
