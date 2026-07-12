@@ -49,7 +49,7 @@ jobs:
     with:
       flink_version: ${{ matrix.flink_branches.flink }}
       connector_branch: ${{ matrix.flink_branches.branch }}
-      jdk_version: ${{ matrix.flink_branches.jdk || '11, 17, 21' }}
+      jdk_version: ${{ matrix.flink_branches.jdk || '11, 17, 21, 25' }}
       run_dependency_convergence: false
   python_test:
     if: github.repository_owner == 'apache'
@@ -60,4 +60,4 @@ jobs:
     with:
       flink_version: ${{ matrix.flink_branches.flink }}
       connector_branch: ${{ matrix.flink_branches.branch }}
-      jdk_version: ${{ matrix.flink_branches.jdk || '11, 17, 21' }}
+      jdk_version: ${{ matrix.flink_branches.jdk || '11, 17, 21, 25' }}

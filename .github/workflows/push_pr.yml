@@ -29,7 +29,7 @@ jobs:
     strategy:
       matrix:
         flink: &flink_versions [ 2.2.1 ]
-        jdk: &jdk_versions [ '11, 17, 21' ]
+        jdk: &jdk_versions [ '11, 17, 21, 25' ]
     uses: apache/flink-connector-shared-utils/.github/workflows/ci.yml@ci_utils
     with:
       flink_version: ${{ matrix.flink }}
