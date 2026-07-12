@@ -61,6 +61,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -2438,7 +2439,7 @@ public class DynamicKafkaSourceEnumeratorTest {
             return getLatestMetadataUpdateEventWithoutContextSync(context, readerId)
                     .getKafkaStreams()
                     .equals(Collections.singleton(expectedKafkaStream));
-        } catch (AssertionError e) {
+        } catch (AssertionError | ConcurrentModificationException e) {
             return false;
         }
     }
