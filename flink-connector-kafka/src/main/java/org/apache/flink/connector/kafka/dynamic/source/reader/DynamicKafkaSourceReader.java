@@ -385,9 +385,14 @@ public class DynamicKafkaSourceReader<T> implements SourceReader<T, DynamicKafka
 
             addSplits(validPendingSplits);
             pendingSplits.clear();
-            if (isNoMoreSplits) {
-                notifyNoMoreSplits();
-            }
+        }
+
+        // Re-deliver a no-more-splits signal that arrived before this metadata update, since
+        // sub-readers created above have not seen it. This must also happen when there are no
+        // pending splits at all: an idle reader that registers after all bounded sub-enumerators
+        // finished discovery receives no-more-splits first and would otherwise never finish.
+        if (isNoMoreSplits) {
+            notifyNoMoreSplits();
         }
     }
 
