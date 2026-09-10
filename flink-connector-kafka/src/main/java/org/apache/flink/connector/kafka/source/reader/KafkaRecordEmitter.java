@@ -27,8 +27,6 @@ import org.apache.flink.util.Collector;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
-import java.io.IOException;
-
 /** The {@link RecordEmitter} implementation for {@link KafkaSourceReader}. */
 @Internal
 public class KafkaRecordEmitter<T>
@@ -47,14 +45,14 @@ public class KafkaRecordEmitter<T>
             SourceOutput<T> output,
             KafkaPartitionSplitState splitState)
             throws Exception {
-        try {
-            sourceOutputWrapper.setSourceOutput(output);
-            sourceOutputWrapper.setTimestamp(consumerRecord.timestamp());
-            deserializationSchema.deserialize(consumerRecord, sourceOutputWrapper);
-            splitState.setCurrentOffset(consumerRecord.offset() + 1);
-        } catch (Exception e) {
-            throw new IOException("Failed to deserialize consumer record due to", e);
-        }
+        // Do not wrap the exception here: deserializationSchema#deserialize() invokes the
+        // collector synchronously, so an exception thrown by a downstream chained operator
+        // surfaces here too, and mislabeling it as a deserialization failure is misleading
+        // (FLINK-32303). Let the original exception, whatever its source, propagate as-is.
+        sourceOutputWrapper.setSourceOutput(output);
+        sourceOutputWrapper.setTimestamp(consumerRecord.timestamp());
+        deserializationSchema.deserialize(consumerRecord, sourceOutputWrapper);
+        splitState.setCurrentOffset(consumerRecord.offset() + 1);
     }
 
     private static class SourceOutputWrapper<T> implements Collector<T> {
