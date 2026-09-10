@@ -368,6 +368,10 @@ under the License.
 						<configuration>
 							<includes>
 								<include>**/KafkaTestEnvironment*</include>
+								<include>**/KafkaTestBase*</include>
+								<include>**/KafkaTableTestBase*</include>
+								<include>**/KafkaWriterTestBase*</include>
+								<include>**/DynamicKafkaSourceTestHelper*</include>
 								<include>**/testutils/*</include>
 								<include>META-INF/LICENSE</include>
 								<include>META-INF/NOTICE</include>
@@ -392,6 +396,10 @@ under the License.
 							</archive>
 							<includes>
 								<include>**/KafkaTestEnvironment*</include>
+								<include>**/KafkaTestBase*</include>
+								<include>**/KafkaTableTestBase*</include>
+								<include>**/KafkaWriterTestBase*</include>
+								<include>**/DynamicKafkaSourceTestHelper*</include>
 								<include>**/testutils/*</include>
 								<include>META-INF/LICENSE</include>
 								<include>META-INF/NOTICE</include>
