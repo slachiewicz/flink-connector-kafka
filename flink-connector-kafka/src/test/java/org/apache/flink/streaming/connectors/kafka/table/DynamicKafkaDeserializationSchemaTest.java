@@ -133,9 +133,11 @@ public class DynamicKafkaDeserializationSchemaTest {
 
         @Override
         public RowData deserialize(byte[] message) {
-            // dereferences the message like a real format (e.g. JSON/CSV) would,
-            // so a null key surfaces as an NPE without the guard in
-            // DynamicKafkaDeserializationSchema#deserialize.
+            // Models a format that dereferences its input directly. The shipped json/csv
+            // formats instead return null on a null message, which silently drops the record
+            // rather than throwing -- either way, the guard in
+            // DynamicKafkaDeserializationSchema#deserialize must run first so neither behavior
+            // (NPE or silent drop) is ever reached for a keyless record in upsert mode.
             return GenericRowData.of(StringData.fromString("key-" + message.length));
         }
 
