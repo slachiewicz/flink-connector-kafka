@@ -36,6 +36,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -119,6 +120,21 @@ public class KafkaSourceBuilderTest {
                         .build();
 
         assertThat(getAutoOffsetResetStrategy(kafkaSource)).isEqualTo("none");
+    }
+
+    @Test
+    public void testMaybeOverridePreservesNonStringPropertyValue() {
+        // ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG is normally a String, but Properties allows
+        // any Object value, and Kafka's own clients accept a Boolean here too. maybeOverride()
+        // must not treat that as "unset" and silently clobber it (FLINK-32400).
+        Properties nonStringProps = new Properties();
+        nonStringProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, Boolean.TRUE);
+        KafkaSourceBuilder<String> builder = getBasicBuilder().setProperties(nonStringProps);
+
+        builder.build();
+
+        assertThat(builder.props.get(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG))
+                .isEqualTo(Boolean.TRUE);
     }
 
     @Test

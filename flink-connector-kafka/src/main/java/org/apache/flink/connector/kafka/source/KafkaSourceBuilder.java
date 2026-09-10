@@ -527,7 +527,11 @@ public class KafkaSourceBuilder<OUT> {
 
     private boolean maybeOverride(String key, String value, boolean override) {
         boolean overridden = false;
-        String userValue = props.getProperty(key);
+        // Properties#getProperty() only returns a value if it is a String, so a non-String
+        // value (e.g. a Boolean, which Kafka's own clients accept) would look "unset" and get
+        // silently clobbered below. Properties#get() checks presence regardless of type
+        // (FLINK-32400).
+        Object userValue = props.get(key);
         if (userValue != null) {
             if (override) {
                 LOG.warn(
