@@ -403,6 +403,26 @@ under the License.
 
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>integration-tests</id>
+						<configuration>
+							<excludes>
+								<!-- flink-connector-parent's excludes for this execution replace (rather
+									than extend) surefire's default **/*$* exclude, so @Nested JUnit5
+									groups were both run inline and separately selected as their own
+									top-level class (FLINK-40511); restore the default here. -->
+								<exclude>${test.unit.pattern}</exclude>
+								<exclude>${additionalExcludes}</exclude>
+								<exclude>**/*$*</exclude>
+							</excludes>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-dependency-plugin</artifactId>
 				<executions>
 					<execution>
