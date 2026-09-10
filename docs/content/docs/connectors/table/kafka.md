@@ -624,7 +624,7 @@ Besides enabling Flink's checkpointing, you can also choose three different mode
  * `at-least-once` (default setting): This guarantees that no records will be lost (although they can be duplicated).
  * `exactly-once`: Kafka transactions will be used to provide exactly-once semantic. Whenever you write
  to Kafka using transactions, do not forget about setting desired `isolation.level` (`read_uncommitted`
- or `read_committed` - the latter one is the default value) for any application consuming records
+ or `read_committed` - the former one is the default value) for any application consuming records
  from Kafka.
 
 Please refer to [Kafka documentation]({{< ref "docs/connectors/datastream/kafka" >}}#kafka-producers-and-fault-tolerance) for more caveats about delivery guarantees.

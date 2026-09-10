@@ -247,6 +247,12 @@ Please note that the following keys will be set by the builder:
 - ```partition.discovery.interval.ms``` is overridden to -1 when
   ```setBounded(OffsetsInitializer)``` has been invoked
 
+```KafkaSource``` does not set ```isolation.level```, so it defaults to the Kafka client's own
+default of ```read_uncommitted```. If the topic is written to with a transactional
+```KafkaSink``` (```DeliveryGuarantee.EXACTLY_ONCE```), set ```isolation.level``` to
+```read_committed``` explicitly via ```setProperty("isolation.level", "read_committed")``` to
+only read committed records and avoid seeing uncommitted or aborted data.
+
 ### Dynamic Partition Discovery
 In order to handle scenarios like topic scaling-out or topic creation without restarting the Flink
 job, Kafka source can be configured to periodically discover new partitions under provided 
