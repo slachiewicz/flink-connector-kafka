@@ -460,6 +460,14 @@ KafkaSource.builder() \
 Please note that the class path of the login module in `sasl.jaas.config` might be different if you relocate Kafka
 client dependencies in the job JAR, so you may need to rewrite it with the actual class path of the module in the JAR.
 
+Because `security.protocol`, `sasl.mechanism`, and `sasl.jaas.config` are set as properties on a single
+`KafkaSource` (or `KafkaSink`, via the equivalent `setProperty` on `KafkaSinkBuilder`) builder instance, each
+source or sink in a job authenticates independently. This lets a single Flink job connect as different Kafka
+principals: give each `KafkaSource` or `KafkaSink` builder its own `sasl.jaas.config` value, and each consumer or
+producer uses only the credentials configured on its own builder. This differs from the process-wide Kerberos
+configuration described in [Enabling Kerberos Authentication](#enabling-kerberos-authentication), which applies
+the same principal to every Kafka client in the job.
+
 For detailed explanations of security configurations, please refer to
 <a href="https://kafka.apache.org/documentation/#security">the "Security" section in Apache Kafka documentation</a>.
 
@@ -703,6 +711,11 @@ A mismatch in service name between client and server configuration will cause th
 
 For more information on Flink configuration for Kerberos security, please see [here]({{< ref "docs/deployment/config" >}}).
 You can also find [here]({{< ref "docs/deployment/security/security-kerberos" >}}) further details on how Flink internally setups Kerberos-based security.
+
+Because these settings live in `flink-conf.yaml`, they apply to the whole Flink process: every `KafkaSource` and
+`KafkaSink` in the job authenticates as the same Kerberos principal. If different consumers or producers in the
+same job need to authenticate as different Kafka principals, configure `sasl.jaas.config` per builder instead, as
+described in [Security](#security).
 
 ## Upgrading to the Latest Connector Version
 
