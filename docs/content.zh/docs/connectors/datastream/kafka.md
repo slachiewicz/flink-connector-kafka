@@ -38,7 +38,7 @@ Apache Flink 集成了通用的 Kafka 连接器，它会尽力与 Kafka client �
 
 {{< connector_artifact flink-connector-kafka kafka >}}
 
-如果使用 Kafka source，```flink-connector-base``` 也需要包含在依赖中：
+```flink-connector-base``` 也需要包含在依赖中，无论是 `KafkaSource` 还是 `KafkaSink` 都需要它，其版本号跟随 Flink 版本而非连接器版本：
 
 {{< artifact flink-connector-base >}}
 

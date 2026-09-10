@@ -38,6 +38,11 @@ For details on Kafka compatibility, please refer to the official [Kafka document
 
 {{< connector_artifact flink-connector-kafka kafka >}}
 
+`flink-connector-base` is also required as a dependency, both for `KafkaSource` and `KafkaSink`.
+Its version follows the Flink version rather than the connector version:
+
+{{< artifact flink-connector-base >}}
+
 Flink's streaming connectors are not part of the binary distribution.
 See how to link with them for cluster execution [here]({{< ref "docs/dev/configuration/overview" >}}).
 
