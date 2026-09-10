@@ -25,6 +25,7 @@ import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
+import org.apache.flink.types.DeserializationException;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.UserCodeClassLoader;
 
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Unit tests for {@link DynamicKafkaDeserializationSchema}. */
 public class DynamicKafkaDeserializationSchemaTest {
@@ -87,6 +89,70 @@ public class DynamicKafkaDeserializationSchemaTest {
 
         GenericRowData row = (GenericRowData) rows.get(0);
         assertThat(row.getField(1)).isEqualTo(StringData.fromString(clusterId));
+    }
+
+    @Test
+    void testNullKeyInUpsertModeThrowsClearException() throws Exception {
+        DynamicKafkaDeserializationSchema schema =
+                new DynamicKafkaDeserializationSchema(
+                        1,
+                        new NullDereferencingDeserializationSchema(),
+                        new int[] {0},
+                        new SingleRowDeserializationSchema(),
+                        new int[] {0},
+                        false,
+                        new DynamicKafkaDeserializationSchema.MetadataConverter[0],
+                        TypeInformation.of(RowData.class),
+                        true);
+
+        schema.open(new TestInitializationContext());
+
+        ConsumerRecord<byte[], byte[]> record =
+                new ConsumerRecord<>("orders", 3, 42L, null, new byte[] {1});
+
+        assertThatThrownBy(
+                        () ->
+                                schema.deserialize(
+                                        record,
+                                        new Collector<RowData>() {
+                                            @Override
+                                            public void collect(RowData record) {}
+
+                                            @Override
+                                            public void close() {}
+                                        }))
+                .isInstanceOf(DeserializationException.class)
+                .hasMessageContaining("orders")
+                .hasMessageContaining("partition 3")
+                .hasMessageContaining("offset 42");
+    }
+
+    private static final class NullDereferencingDeserializationSchema
+            implements DeserializationSchema<RowData> {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public RowData deserialize(byte[] message) {
+            // dereferences the message like a real format (e.g. JSON/CSV) would,
+            // so a null key surfaces as an NPE without the guard in
+            // DynamicKafkaDeserializationSchema#deserialize.
+            return GenericRowData.of(StringData.fromString("key-" + message.length));
+        }
+
+        @Override
+        public void deserialize(byte[] message, Collector<RowData> out) {
+            out.collect(deserialize(message));
+        }
+
+        @Override
+        public boolean isEndOfStream(RowData nextElement) {
+            return false;
+        }
+
+        @Override
+        public TypeInformation<RowData> getProducedType() {
+            return TypeInformation.of(RowData.class);
+        }
     }
 
     private static final class SingleRowDeserializationSchema

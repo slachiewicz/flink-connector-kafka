@@ -146,6 +146,15 @@ class DynamicKafkaDeserializationSchema
 
         // buffer key(s)
         if (keyDeserialization != null) {
+            if (record.key() == null && upsertMode) {
+                throw new DeserializationException(
+                        String.format(
+                                "The 'upsert-kafka' connector requires every Kafka record to "
+                                        + "carry a key, but found a record with no key from topic "
+                                        + "'%s', partition %d, offset %d. Check the producer that "
+                                        + "wrote to this topic.",
+                                record.topic(), record.partition(), record.offset()));
+            }
             keyDeserialization.deserialize(record.key(), keyCollector);
         }
 
