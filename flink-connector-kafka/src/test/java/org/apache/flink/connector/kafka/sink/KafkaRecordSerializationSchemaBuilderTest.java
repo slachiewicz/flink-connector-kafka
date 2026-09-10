@@ -230,6 +230,27 @@ class KafkaRecordSerializationSchemaBuilderTest {
     }
 
     @Test
+    void testKafkaValueSerializerWrapperWithNonStringConfigValue() throws Exception {
+        // FLINK-29239: the configuration map accepted by setKafkaValueSerializer/
+        // setKafkaKeySerializer must allow non-String values, matching what Kafka's own
+        // Configurable#configure(Map<String, ?>) and Serializer#configure(Map<String, ?>,
+        // boolean) already accept.
+        final Map<String, Object> config = new HashMap<>();
+        config.put("simpleKey", "simpleValue");
+        config.put("retries", 3);
+        config.put("enabled", true);
+        final KafkaRecordSerializationSchema<String> schema =
+                KafkaRecordSerializationSchema.builder()
+                        .setTopic(DEFAULT_TOPIC)
+                        .setKafkaValueSerializer(SimpleStringSerializer.class, config)
+                        .build();
+        open(schema);
+        assertThat(configuration).isEqualTo(config);
+        assertThat(configuration.get("retries")).isEqualTo(3);
+        assertThat(configuration.get("enabled")).isEqualTo(true);
+    }
+
+    @Test
     void testSerializeRecordWithKafkaSerializer() throws Exception {
         final Map<String, String> config = Collections.singletonMap("configKey", "configValue");
         final KafkaRecordSerializationSchema<String> schema =

@@ -185,7 +185,7 @@ public class KafkaRecordSerializationSchemaBuilder<IN> {
      */
     public <T extends IN, S extends Serializer<? super T>>
             KafkaRecordSerializationSchemaBuilder<T> setKafkaKeySerializer(
-                    Class<S> keySerializer, Map<String, String> configuration) {
+                    Class<S> keySerializer, Map<String, ?> configuration) {
         checkKeySerializerNotSet();
         KafkaRecordSerializationSchemaBuilder<T> self = self();
         self.keySerializationSchema =
@@ -254,7 +254,7 @@ public class KafkaRecordSerializationSchemaBuilder<IN> {
      */
     public <T extends IN, S extends Serializer<? super T>>
             KafkaRecordSerializationSchemaBuilder<T> setKafkaValueSerializer(
-                    Class<S> valueSerializer, Map<String, String> configuration) {
+                    Class<S> valueSerializer, Map<String, ?> configuration) {
         checkValueSerializerNotSet();
         KafkaRecordSerializationSchemaBuilder<T> self = self();
         self.valueSerializationSchema =

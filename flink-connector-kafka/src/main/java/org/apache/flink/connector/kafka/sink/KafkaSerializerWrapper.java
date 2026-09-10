@@ -38,7 +38,7 @@ class KafkaSerializerWrapper<IN> implements SerializationSchema<IN> {
     private final Class<? extends Serializer<? super IN>> serializerClass;
     // Whether the serializer is for key or value.
     private final boolean isKey;
-    private final Map<String, String> config;
+    private final Map<String, ?> config;
     private final Function<? super IN, String> topicSelector;
 
     private transient Serializer<? super IN> serializer;
@@ -46,7 +46,7 @@ class KafkaSerializerWrapper<IN> implements SerializationSchema<IN> {
     KafkaSerializerWrapper(
             Class<? extends Serializer<? super IN>> serializerClass,
             boolean isKey,
-            Map<String, String> config,
+            Map<String, ?> config,
             Function<? super IN, String> topicSelector) {
         this.serializerClass = checkNotNull(serializerClass);
         this.isKey = isKey;
