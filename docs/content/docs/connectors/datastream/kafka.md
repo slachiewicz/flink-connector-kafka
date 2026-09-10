@@ -677,6 +677,18 @@ an explanation of the different guarantees.
   transaction.timeout.ms)>> maximum checkpoint duration + maximum restart duration or data loss may
   happen when Kafka expires an uncommitted transaction. 
 
+#### Migrating from FlinkKafkaProducer
+
+If you migrate from ```FlinkKafkaProducer``` to ```KafkaSink``` while keeping the operator's ```uid```
+unchanged (to avoid `--allow-non-restored-state`), be aware that ```FlinkKafkaProducer```'s legacy
+```next-transactional-id-hint-v2``` union list state is preserved in the checkpoint but is never read
+or cleared by ```KafkaSink```, which does not know about it. Because union list state is
+re-broadcast to every subtask on each restore and re-snapshotted unchanged, its entry count grows by
+a factor of the parallelism on every restart and can eventually exceed the RPC message size limit.
+To avoid this, give the new ```KafkaSink``` a different ```uid```, or, if ```uid``` continuity is
+required, rewrite the savepoint with the [State Processor API]({{< ref "docs/libs/state_processor_api" >}})
+to drop the ```next-transactional-id-hint(-v2)``` entries before restoring under the shared ```uid```.
+
 ### Monitoring
 
 Kafka sink exposes the following metrics in the respective [scope]({{< ref "docs/ops/metrics" >}}/#scope).
