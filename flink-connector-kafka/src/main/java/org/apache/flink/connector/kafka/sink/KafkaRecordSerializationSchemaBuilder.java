@@ -101,6 +101,7 @@ public class KafkaRecordSerializationSchemaBuilder<IN> {
     @Nullable private KafkaPartitioner<? super IN> partitioner;
     @Nullable private SerializationSchema<? super IN> keySerializationSchema;
     @Nullable private HeaderProvider<? super IN> headerProvider;
+    private boolean writeTimestamp = true;
 
     /**
      * Sets a custom partitioner determining the target partition of the target topic.
@@ -222,6 +223,26 @@ public class KafkaRecordSerializationSchemaBuilder<IN> {
         return self;
     }
 
+    /**
+     * Controls whether the record timestamp (the {@code timestamp} argument of {@link
+     * KafkaRecordSerializationSchema#serialize(Object, KafkaSinkContext, Long)}, typically the
+     * event-time or ingestion-time timestamp assigned by Flink) is written to the {@link
+     * ProducerRecord}. Defaults to {@code true}, which is the historical behaviour: the context
+     * timestamp is forwarded to Kafka (or, if none is assigned, Kafka assigns one itself according
+     * to {@code CreateTime}).
+     *
+     * <p>Set this to {@code false} to always omit the timestamp from the {@link ProducerRecord},
+     * for example to let the broker assign {@code LogAppendTime} for the topic, or to avoid leaking
+     * Flink's event-time as the Kafka record timestamp.
+     *
+     * @param writeTimestamp whether to forward the context timestamp to the {@link ProducerRecord}
+     * @return {@code this}
+     */
+    public KafkaRecordSerializationSchemaBuilder<IN> setWriteTimestamp(boolean writeTimestamp) {
+        this.writeTimestamp = writeTimestamp;
+        return this;
+    }
+
     @SuppressWarnings("unchecked")
     private <T extends IN> KafkaRecordSerializationSchemaBuilder<T> self() {
         return (KafkaRecordSerializationSchemaBuilder<T>) this;
@@ -275,7 +296,8 @@ public class KafkaRecordSerializationSchemaBuilder<IN> {
                 valueSerializationSchema,
                 keySerializationSchema,
                 partitioner,
-                headerProvider);
+                headerProvider,
+                writeTimestamp);
     }
 
     private void checkValueSerializerNotSet() {
@@ -348,18 +370,21 @@ public class KafkaRecordSerializationSchemaBuilder<IN> {
         private final KafkaPartitioner<? super IN> partitioner;
         private final SerializationSchema<? super IN> keySerializationSchema;
         private final HeaderProvider<? super IN> headerProvider;
+        private final boolean writeTimestamp;
 
         KafkaRecordSerializationSchemaWrapper(
                 Function<? super IN, String> topicSelector,
                 SerializationSchema<? super IN> valueSerializationSchema,
                 @Nullable SerializationSchema<? super IN> keySerializationSchema,
                 @Nullable KafkaPartitioner<? super IN> partitioner,
-                @Nullable HeaderProvider<? super IN> headerProvider) {
+                @Nullable HeaderProvider<? super IN> headerProvider,
+                boolean writeTimestamp) {
             this.topicSelector = checkNotNull(topicSelector);
             this.valueSerializationSchema = checkNotNull(valueSerializationSchema);
             this.partitioner = partitioner;
             this.keySerializationSchema = keySerializationSchema;
             this.headerProvider = headerProvider;
+            this.writeTimestamp = writeTimestamp;
         }
 
         @Override
@@ -397,10 +422,13 @@ public class KafkaRecordSerializationSchemaBuilder<IN> {
                                             context.getPartitionsForTopic(targetTopic)))
                             : OptionalInt.empty();
 
+            final Long recordTimestamp =
+                    writeTimestamp && timestamp != null && timestamp >= 0L ? timestamp : null;
+
             return new ProducerRecord<>(
                     targetTopic,
                     partition.isPresent() ? partition.getAsInt() : null,
-                    timestamp == null || timestamp < 0L ? null : timestamp,
+                    recordTimestamp,
                     key,
                     value,
                     headerProvider != null ? headerProvider.getHeaders(element) : null);

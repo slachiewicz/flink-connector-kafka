@@ -569,6 +569,10 @@ KafkaRecordSerializationSchema.builder() \
 其中消息体（value）序列化方法和 topic 的选择方法是必须指定的，此外也可以通过 ```setKafkaKeySerializer(Serializer)``` 或
 ```setKafkaValueSerializer(Serializer)``` 来使用 Kafka 提供而非 Flink 提供的序列化器。
 
+默认情况下，Flink 分配的记录时间戳（如果启用了事件时间或摄入时间）会被写入产出的 Kafka 记录。可以通过构建器上的
+```setWriteTimestamp(boolean)```（PyFlink 中不支持）关闭该行为，始终由 Kafka 来分配时间戳，例如依赖 topic 的
+```LogAppendTime```，或避免将 Flink 的事件时间泄露到 Kafka 中。
+
 ### 容错
 
 ```KafkaSink``` 总共支持三种不同的语义保证（```DeliveryGuarantee```）。对于 ```DeliveryGuarantee.AT_LEAST_ONCE``` 和

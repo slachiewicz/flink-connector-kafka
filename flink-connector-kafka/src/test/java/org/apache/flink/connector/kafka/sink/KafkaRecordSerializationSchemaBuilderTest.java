@@ -272,6 +272,45 @@ class KafkaRecordSerializationSchemaBuilderTest {
     }
 
     @Test
+    void testSerializeRecordWithWriteTimestampTrue() {
+        final SerializationSchema<String> serializationSchema = new SimpleStringSchema();
+        final KafkaRecordSerializationSchema<String> schema =
+                KafkaRecordSerializationSchema.builder()
+                        .setTopic(DEFAULT_TOPIC)
+                        .setValueSerializationSchema(serializationSchema)
+                        .setKeySerializationSchema(serializationSchema)
+                        .setWriteTimestamp(true)
+                        .build();
+        final ProducerRecord<byte[], byte[]> recordWithTimestamp =
+                schema.serialize("a", null, 100L);
+        assertThat((long) recordWithTimestamp.timestamp()).isEqualTo(100L);
+
+        final ProducerRecord<byte[], byte[]> recordWithoutTimestamp =
+                schema.serialize("a", null, null);
+        assertThat(recordWithoutTimestamp.timestamp()).isNull();
+    }
+
+    @Test
+    void testSerializeRecordWithWriteTimestampFalse() {
+        final SerializationSchema<String> serializationSchema = new SimpleStringSchema();
+        final KafkaRecordSerializationSchema<String> schema =
+                KafkaRecordSerializationSchema.builder()
+                        .setTopic(DEFAULT_TOPIC)
+                        .setValueSerializationSchema(serializationSchema)
+                        .setKeySerializationSchema(serializationSchema)
+                        .setWriteTimestamp(false)
+                        .build();
+
+        final ProducerRecord<byte[], byte[]> recordWithTimestamp =
+                schema.serialize("a", null, 100L);
+        assertThat(recordWithTimestamp.timestamp()).isNull();
+
+        final ProducerRecord<byte[], byte[]> recordWithoutTimestamp =
+                schema.serialize("a", null, null);
+        assertThat(recordWithoutTimestamp.timestamp()).isNull();
+    }
+
+    @Test
     void testGetLineageDatasetFacetsWhenTopicSelectorNotKafkaTopicsIdentifierProvider() {
         SerializationSchema<String> serializationSchema = new SimpleStringSchema();
         KafkaRecordSerializationSchema<String> schema =

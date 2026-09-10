@@ -653,6 +653,12 @@ It is **required** to always set a value serialization method and a topic (selec
 Moreover, it is also possible to use Kafka serializers instead of Flink serializer by using 
 ```setKafkaKeySerializer(Serializer)``` or ```setKafkaValueSerializer(Serializer)```.
 
+By default, the record timestamp assigned by Flink (event time or ingestion time, if enabled) is
+forwarded to the produced Kafka record. Use ```setWriteTimestamp(boolean)``` on the builder
+(not available in PyFlink) to disable this and always let Kafka assign the timestamp instead, for
+example to rely on the topic's ```LogAppendTime``` or to avoid leaking Flink's event time into
+Kafka.
+
 ### Fault Tolerance
 
 Overall the ```KafkaSink``` supports three different ```DeliveryGuarantee```s. For 
