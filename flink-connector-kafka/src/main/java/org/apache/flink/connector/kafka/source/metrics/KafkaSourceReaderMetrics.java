@@ -74,6 +74,7 @@ public class KafkaSourceReaderMetrics {
     public static final String PARTITION_GROUP = "partition";
     public static final String CURRENT_OFFSET_METRIC_GAUGE = "currentOffset";
     public static final String COMMITTED_OFFSET_METRIC_GAUGE = "committedOffset";
+    public static final String RECORDS_LAG_METRIC_GAUGE = "recordsLag";
     public static final String COMMITS_SUCCEEDED_METRIC_COUNTER = "commitsSucceeded";
     public static final String COMMITS_FAILED_METRIC_COUNTER = "commitsFailed";
     public static final String KAFKA_CONSUMER_METRIC_GROUP = "KafkaConsumer";
@@ -279,6 +280,23 @@ public class KafkaSourceReaderMetrics {
                 () ->
                         offsets.getOrDefault(tp, new Offset(INITIAL_OFFSET, INITIAL_OFFSET))
                                 .committedOffset);
+        topicPartitionGroup.gauge(RECORDS_LAG_METRIC_GAUGE, () -> getRecordsLag(tp));
+    }
+
+    /**
+     * Reads the current records-lag for the given {@link TopicPartition} from the Kafka {@link
+     * Metric} tracked by {@link #maybeAddRecordsLagMetric(KafkaConsumer, TopicPartition)}.
+     *
+     * <p>The underlying Kafka consumer only exposes records-lag once the partition has been
+     * assigned and polled at least once, so this returns {@link Double#NaN} until then (see
+     * FLINK-11912).
+     */
+    private double getRecordsLag(TopicPartition tp) {
+        if (recordsLagMetrics == null) {
+            return Double.NaN;
+        }
+        final Metric recordsLagMetric = recordsLagMetrics.get(tp);
+        return recordsLagMetric == null ? Double.NaN : (Double) recordsLagMetric.metricValue();
     }
 
     private void checkTopicPartitionTracked(TopicPartition tp) {

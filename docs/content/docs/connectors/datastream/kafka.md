@@ -354,7 +354,7 @@ Kafka source exposes the following metrics in the respective [scope]({{< ref "do
   </thead>
   <tbody>
     <tr>
-        <th rowspan="8">Operator</th>
+        <th rowspan="9">Operator</th>
         <td>currentEmitEventTimeLag</td>
         <td>n/a</td>
         <td>The time span from the record event timestamp to the time the record is emitted by the source connector¹: <code>currentEmitEventTimeLag = EmitTime - EventTime.</code></td>
@@ -405,6 +405,16 @@ Kafka source exposes the following metrics in the respective [scope]({{< ref "do
       <td>topic, partition</td>
       <td>The consumer's current read offset, for each partition. A particular
       partition's metric can be specified by topic name and partition id.</td>
+      <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>KafkaSourceReader.recordsLag</td>
+      <td>topic, partition</td>
+      <td>The Kafka consumer's <code>records-lag</code> for each partition: how many
+      records are available on the broker beyond the consumer's current offset. A particular
+      partition's metric can be specified by topic name and partition id. The Kafka consumer
+      only exposes this metric once it has polled the partition at least once, so the gauge
+      reports <code>NaN</code> until then.</td>
       <td>Gauge</td>
     </tr>
   </tbody>
