@@ -37,9 +37,12 @@ public class KafkaMetricMutableWrapper implements Gauge<Double> {
         final Object metricValue = kafkaMetric.metricValue();
         // Previously KafkaMetric supported KafkaMetric#value that always returned a Double value.
         // Since this method has been deprecated and is removed in future releases we have to
-        // manually check if the returned value is Double. Internally, KafkaMetric#value also
-        // returned 0.0 for all not "measurable" values, so we restored the original behavior.
-        return metricValue instanceof Double ? (Double) metricValue : 0.0;
+        // manually check if the returned value is numeric. Kafka clients also expose non-Double
+        // numeric metrics (e.g. the app-info group's start-time-ms, a Long), which used to be
+        // silently reported as 0.0; widen those to double instead of dropping them. Internally,
+        // KafkaMetric#value also returned 0.0 for all not "measurable" (e.g. String) values, so
+        // we keep that behavior for non-numeric metrics.
+        return metricValue instanceof Number ? ((Number) metricValue).doubleValue() : 0.0;
     }
 
     public void setKafkaMetric(Metric kafkaMetric) {

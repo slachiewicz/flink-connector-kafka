@@ -24,6 +24,7 @@ import org.apache.flink.metrics.Gauge;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static org.apache.flink.connector.kafka.testutils.KafkaUtil.createKafkaContainer;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 class KafkaMetricMutableWrapperTest {
@@ -55,6 +57,35 @@ class KafkaMetricMutableWrapperTest {
     @Test
     void testOnlyMeasurableMetricsAreRegisteredWithMutableWrapper() {
         testOnlyMeasurableMetricsAreRegistered(KafkaMetricMutableWrapper::new);
+    }
+
+    @Test
+    void testNonDoubleNumericMetricsAreForwarded() {
+        // Kafka clients also expose non-Double numeric metrics, e.g. the app-info group's
+        // start-time-ms (a Long). These used to be silently reported as 0.0; see FLINK-27493.
+        assertThat(new KafkaMetricMutableWrapper(fakeMetric(42L)).getValue()).isEqualTo(42.0);
+        assertThat(new KafkaMetricMutableWrapper(fakeMetric(7)).getValue()).isEqualTo(7.0);
+        assertThat(new KafkaMetricMutableWrapper(fakeMetric(1.5)).getValue()).isEqualTo(1.5);
+    }
+
+    @Test
+    void testNonNumericMetricsFallBackToZero() {
+        assertThat(new KafkaMetricMutableWrapper(fakeMetric("4.2.0")).getValue()).isEqualTo(0.0);
+    }
+
+    private static Metric fakeMetric(Object value) {
+        return new Metric() {
+            @Override
+            public MetricName metricName() {
+                return new MetricName(
+                        "test-metric", "test-group", "", java.util.Collections.emptyMap());
+            }
+
+            @Override
+            public Object metricValue() {
+                return value;
+            }
+        };
     }
 
     private static void testOnlyMeasurableMetricsAreRegistered(
