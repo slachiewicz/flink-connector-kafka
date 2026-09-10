@@ -246,6 +246,10 @@ Please note that the following keys will be set by the builder:
   initialized position later becomes unavailable.
 - ```partition.discovery.interval.ms``` is overridden to -1 when
   ```setBounded(OffsetsInitializer)``` has been invoked
+- ```enable.auto.commit``` is set to ```false``` by the builder unless explicitly configured.
+  To fall back on Kafka's own periodic offset committing when checkpointing is disabled (see
+  [Consumer Offset Committing](#consumer-offset-committing) below), set
+  ```enable.auto.commit=true``` explicitly.
 
 ### Dynamic Partition Discovery
 In order to handle scenarios like topic scaling-out or topic creation without restarting the Flink

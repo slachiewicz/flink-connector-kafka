@@ -228,6 +228,9 @@ Kafka consumer 的配置可以参考 [Apache Kafka 文档](http://kafka.apache.o
 请注意，构建器会设置以下配置项：
 - 如果未显式配置 ```auto.offset.reset```，则会基于 OffsetsInitializer#getAutoOffsetResetStrategy() 设置该配置。起始 offset 初始化器用于选择初始读取位置，而显式配置的 ```auto.offset.reset``` 用于控制已初始化的位置随后变得不可用时的处理方式。
 - ```partition.discovery.interval.ms``` 会在批模式下被覆盖为 -1
+- ```enable.auto.commit``` 除非显式配置，否则会被构建器设置为 ```false```。如果需要在未开启 checkpoint 时
+  依赖 Kafka 自身的定时自动提交位点功能（参见下面的<a href="#consumer-offset-committing">消费位点提交</a>一节），
+  请显式设置 ```enable.auto.commit=true```。
 
 ### 动态分区检查
 为了在不重启 Flink 作业的情况下处理 Topic 扩容或新建 Topic 等场景，可以将 Kafka Source 配置为在提供的 Topic / Partition 
