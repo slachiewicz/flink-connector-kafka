@@ -127,6 +127,9 @@ public class SingleClusterTopicMetadataService implements KafkaMetadataService {
             adminClientProps.setProperty(
                     CommonClientConfigs.CLIENT_ID_CONFIG,
                     clientIdPrefix + "-single-cluster-topic-metadata-service");
+            // Flink-internal options (e.g. partition.discovery.interval.ms) are not Kafka client
+            // configs; strip them so AdminClient does not log them as unknown (FLINK-4004).
+            KafkaSourceOptions.removeInternalConfigOptions(adminClientProps);
             adminClient = AdminClient.create(adminClientProps);
         }
 
