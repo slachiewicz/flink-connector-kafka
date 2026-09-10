@@ -406,6 +406,83 @@ public class KafkaWriterITCase extends KafkaWriterTestBase {
     }
 
     /**
+     * Tests that producers handed to a committable that is never recycled -- e.g. because the
+     * writer and committer are not chained and {@link KafkaCommittableSerializer} drops the
+     * producer reference across the wire (its {@code deserialize()} reconstructs the {@link
+     * KafkaCommittable} with a {@code null} producer) -- do not accumulate without bound in the
+     * writer. Before FLINK-34693 was fixed, every checkpoint in this loop added one more entry to
+     * {@code producerCloseables} with no way to ever remove it, causing the unbounded growth
+     * documented on the JIRA (a multi-GB heap dump of retained producers); the fix keeps a bounded
+     * number of such producers in {@code inFlightProducers} instead, force-closing the oldest one
+     * once the bound is exceeded (see that field's javadoc for the trade-off this implies).
+     */
+    @Test
+    void testUnrecycledHandedOffProducersAreBounded() throws Exception {
+        final Properties properties = getKafkaClientConfiguration();
+        try (final KafkaWriter<Integer> writer =
+                createWriterWithConfiguration(properties, DeliveryGuarantee.EXACTLY_ONCE)) {
+
+            final int numCheckpoints = 20;
+            for (int checkpointId = 1; checkpointId <= numCheckpoints; checkpointId++) {
+                writer.write(checkpointId, SINK_WRITER_CONTEXT);
+                writer.flush(false);
+                Collection<KafkaCommittable> committables = writer.prepareCommit();
+                writer.snapshotState(checkpointId);
+                assertThat(committables).hasSize(1);
+                final KafkaCommittable committable = committables.stream().findFirst().get();
+
+                // Simulate the unchained writer/committer path: the committable crosses
+                // KafkaCommittableSerializer, which only carries id/producerId/epoch, so the
+                // recycler captured in the Recyclable above is never invoked on this side. The
+                // commit itself is performed by an independent recovery producer resuming the
+                // same producerId/epoch, exactly like KafkaCommitter#getRecoveryProducer does; the
+                // writer's own copy of the producer is deliberately left for the writer to manage
+                // (bounded eviction, or #close() at the end of this test) rather than closed here.
+                try (FlinkKafkaInternalProducer<byte[], byte[]> recoveryProducer =
+                        new FlinkKafkaInternalProducer<>(
+                                properties, committable.getTransactionalId())) {
+                    recoveryProducer.resumeTransaction(
+                            committable.getProducerId(), committable.getEpoch());
+                    recoveryProducer.commitTransaction();
+                }
+
+                assertThat(writer.getInFlightProducers().size())
+                        .as("unrecycled hand-offs must be bounded, not accumulate per checkpoint")
+                        .isLessThanOrEqualTo(KafkaWriter.getMaxUnrecycledHandedOffProducers());
+                assertThat(writer.getProducerCloseables().size())
+                        .as("hand-offs must not sit in producerCloseables either")
+                        .isLessThanOrEqualTo(2);
+            }
+        }
+    }
+
+    /**
+     * Tests that producers created only to fill a transactional-id gap in {@link
+     * KafkaWriter#getTransactionalProducer} are closed as soon as they are superseded by the
+     * producer for the next id in the gap, rather than accumulating in {@code producerCloseables}
+     * for the life of the writer. This is the second, narrower leak driver fixed alongside the
+     * committable hand-off case above (FLINK-34693).
+     */
+    @Test
+    void testGapFillProducersDoNotAccumulateInProducerCloseables() throws Exception {
+        try (final KafkaWriter<Integer> writer =
+                createWriterWithConfiguration(
+                        getKafkaClientConfiguration(), DeliveryGuarantee.EXACTLY_ONCE)) {
+            // The constructor already created a producer for checkpoint id 1 (no gap). Jumping
+            // straight to checkpoint 6 opens a gap of ids 2..5 that are never used to write
+            // anything and must be closed as soon as each is superseded by the next.
+            writer.snapshotState(5);
+
+            assertThat(writer.getProducerCloseables())
+                    .as(
+                            "only the constructor's producer and the final gap-fill producer"
+                                    + " should still be tracked; the 4 superseded intermediates"
+                                    + " must have been closed instead of accumulating")
+                    .hasSize(2);
+        }
+    }
+
+    /**
      * Tests that if a pre-commit attempt occurs on an empty transaction, the writer should not emit
      * a KafkaCommittable, and instead immediately commit the empty transaction and recycle the
      * producer.

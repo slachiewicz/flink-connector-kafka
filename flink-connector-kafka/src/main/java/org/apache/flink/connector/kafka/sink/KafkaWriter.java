@@ -78,6 +78,30 @@ class KafkaWriter<IN>
     private static final String KEY_REGISTER_METRICS = "register.producer.metrics";
     private static final String KAFKA_PRODUCER_METRICS = "producer-metrics";
 
+    /**
+     * Upper bound on {@link #inFlightProducers}: producers handed to a committable (see {@link
+     * #prepareCommit()}) that have not yet been recycled by {@link #recycleProducer}. In the
+     * chained writer/committer case a hand-off from checkpoint {@code N} is recycled once
+     * checkpoint {@code N} is notified complete, and with Flink's {@code
+     * execution.checkpointing.max-concurrent-checkpoints} (default 1, and {@link
+     * KafkaCommitter#UNKNOWN_PRODUCER_ID_ERROR_MESSAGE} already tells users to keep it at 1 with
+     * EXACTLY_ONCE) the coordinator will not be more than a handful of checkpoints ahead of the
+     * last completed one, so the deque should never actually reach this bound there. In the
+     * unchained case (KafkaCommittableSerializer drops the producer reference across the wire, see
+     * its deserialize()) a hand-off is never recycled at all, so without a bound this deque would
+     * reproduce the exact unbounded {@code producerCloseables} growth this constant exists to avoid
+     * (FLINK-34693); once it is exceeded, the oldest hand-off is force-closed instead.
+     *
+     * <p>Risk: force-closing is safe once a committable has actually been committed (commit is
+     * keyed by producerId/epoch, so a close afterwards is a no-op), but if a *chained* committer is
+     * still more than this many checkpoints behind when it finally calls {@code
+     * Recyclable#getObject()}, it will observe an already-closed producer and its commit will fail
+     * (recoverable via job restart from the last completed checkpoint, not silent data loss). This
+     * is a heuristic trade-off, not a hard guarantee; see the FLINK-34693 task file for the sizing
+     * discussion.
+     */
+    private static final int MAX_UNRECYCLED_HANDED_OFF_PRODUCERS = 5;
+
     private final DeliveryGuarantee deliveryGuarantee;
     private final Properties kafkaProducerConfig;
     private final String transactionalIdPrefix;
@@ -104,6 +128,11 @@ class KafkaWriter<IN>
     private long lastCheckpointId;
 
     private final Deque<AutoCloseable> producerCloseables = new ArrayDeque<>();
+    // producers handed to a committable in #prepareCommit that have not yet been recycled by
+    // #recycleProducer; bounded by MAX_UNRECYCLED_HANDED_OFF_PRODUCERS, see its javadoc
+    // (FLINK-34693)
+    private final Deque<FlinkKafkaInternalProducer<byte[], byte[]>> inFlightProducers =
+            new ArrayDeque<>();
 
     private boolean closed = false;
     private long lastSync = System.currentTimeMillis();
@@ -215,9 +244,26 @@ class KafkaWriter<IN>
 
         // only return a KafkaCommittable if the current transaction has been written some data
         if (currentProducer.hasRecordsInTransaction()) {
+            // Ownership of the producer moves to the committable from here on: it is either
+            // recycled by #recycleProducer (chained writer/committer, in-memory hand-off) or
+            // committed and discarded through an independently created recovery producer in
+            // KafkaCommitter (unchained writer/committer -- KafkaCommittableSerializer does not
+            // carry the producer across the wire, see deserialize()), or simply dropped without
+            // ever being committed if the checkpoint this committable belongs to is aborted before
+            // KafkaCommitter runs. Move it out of producerCloseables so it does not sit there for
+            // the remaining lifetime of the writer in the unchained case (FLINK-34693), but keep a
+            // bounded strong reference in inFlightProducers so #close() can still close it if it is
+            // never recycled -- e.g. because the checkpoint was aborted, or because the writer
+            // shuts
+            // down before a chained committer gets to it.
+            producerCloseables.remove(currentProducer);
+            inFlightProducers.add(currentProducer);
+            while (inFlightProducers.size() > MAX_UNRECYCLED_HANDED_OFF_PRODUCERS) {
+                closeOldestInFlightProducer();
+            }
             final List<KafkaCommittable> committables =
                     Collections.singletonList(
-                            KafkaCommittable.of(currentProducer, producerPool::add));
+                            KafkaCommittable.of(currentProducer, this::recycleProducer));
             LOG.debug("Committing {} committables.", committables);
             return committables;
         }
@@ -242,13 +288,65 @@ class KafkaWriter<IN>
         closed = true;
         LOG.debug("Closing writer with {}", currentProducer);
         closeAll(this::abortCurrentProducer, producerPool::clear);
+        // currentProducer is normally already tracked in producerCloseables or inFlightProducers,
+        // but guard the rare race where close() runs between prepareCommit() and snapshotState()
+        // (see #prepareCommit) by making sure it is closed below regardless.
+        if (!producerCloseables.contains(currentProducer)
+                && !inFlightProducers.contains(currentProducer)) {
+            producerCloseables.add(currentProducer);
+        }
         closeAll(producerCloseables);
+        closeAll(inFlightProducers);
         checkState(
                 currentProducer.isClosed(), "Could not close current producer " + currentProducer);
         currentProducer = null;
 
         // Rethrow exception for the case in which close is called before writer() and flush().
         checkAsyncException();
+    }
+
+    /**
+     * Called when a producer that was handed to a {@link KafkaCommittable} (see {@link
+     * #prepareCommit()}) is recycled by a chained {@link KafkaCommitter}. Ownership returns to the
+     * writer at this point, so the producer is re-tracked in {@link #producerCloseables} in
+     * addition to being returned to {@link #producerPool}, ensuring {@link #close()} still closes
+     * it if it is sitting in the pool when the writer shuts down.
+     */
+    private void recycleProducer(FlinkKafkaInternalProducer<byte[], byte[]> producer) {
+        inFlightProducers.remove(producer);
+        if (producer.isClosed()) {
+            // #closeOldestInFlightProducer already force-closed this one to enforce
+            // MAX_UNRECYCLED_HANDED_OFF_PRODUCERS while a chained committer was still holding it;
+            // a closed producer must never re-enter producerPool, or the next
+            // getOrCreateTransactionalProducer() call would try to reuse it and fail.
+            LOG.debug("Not recycling {}: it was already force-closed", producer);
+            return;
+        }
+        producerCloseables.add(producer);
+        producerPool.add(producer);
+    }
+
+    /**
+     * Force-closes the oldest producer still awaiting recycling once {@link #inFlightProducers}
+     * exceeds {@link #MAX_UNRECYCLED_HANDED_OFF_PRODUCERS}. See that constant's javadoc for why
+     * this is bounded and what the risk of doing so is.
+     */
+    private void closeOldestInFlightProducer() {
+        final FlinkKafkaInternalProducer<byte[], byte[]> producer = inFlightProducers.poll();
+        LOG.warn(
+                "More than {} producers handed to a committable are still awaiting recycling; "
+                        + "force-closing the oldest one ({}) to bound memory (FLINK-34693). This is "
+                        + "expected when the writer and committer are not chained. If a chained "
+                        + "committer still tries to commit with this producer afterwards, that "
+                        + "commit will fail and the job will restart from the last completed "
+                        + "checkpoint.",
+                MAX_UNRECYCLED_HANDED_OFF_PRODUCERS,
+                producer);
+        try {
+            producer.close();
+        } catch (Exception e) {
+            LOG.warn("Failed to close handed-off producer {}", producer, e);
+        }
     }
 
     private void abortCurrentProducer() {
@@ -270,6 +368,21 @@ class KafkaWriter<IN>
     @VisibleForTesting
     FlinkKafkaInternalProducer<byte[], byte[]> getCurrentProducer() {
         return currentProducer;
+    }
+
+    @VisibleForTesting
+    Deque<AutoCloseable> getProducerCloseables() {
+        return producerCloseables;
+    }
+
+    @VisibleForTesting
+    Deque<FlinkKafkaInternalProducer<byte[], byte[]>> getInFlightProducers() {
+        return inFlightProducers;
+    }
+
+    @VisibleForTesting
+    static int getMaxUnrecycledHandedOffProducers() {
+        return MAX_UNRECYCLED_HANDED_OFF_PRODUCERS;
     }
 
     void abortLingeringTransactions(
@@ -317,6 +430,13 @@ class KafkaWriter<IN>
         // in case checkpoints have been aborted, Flink would create non-consecutive transaction ids
         // this loop ensures that all gaps are filled with initialized (empty) transactions
         for (long id = lastCheckpointId + 1; id <= checkpointId; id++) {
+            if (producer != null) {
+                // this producer only exists to fill a transactional-id gap; it never begins a
+                // transaction and is immediately superseded by the producer for the next id, so it
+                // must be released now instead of living in producerCloseables for the remaining
+                // lifetime of the writer (FLINK-34693)
+                closeGapFillProducer(producer);
+            }
             String transactionalId =
                     TransactionalIdFactory.buildTransactionalId(
                             transactionalIdPrefix, kafkaSinkContext.getParallelInstanceId(), id);
@@ -326,6 +446,21 @@ class KafkaWriter<IN>
         assert producer != null;
         LOG.info("Created new transactional producer {}", producer.getTransactionalId());
         return producer;
+    }
+
+    /**
+     * Closes a producer that only served to fill a transactional-id gap. This also applies if the
+     * producer came from {@link #producerPool} rather than being newly created: its transactional
+     * id is bound to a checkpoint id that is never reused, and the pool is refilled again on the
+     * next checkpoint, so closing rather than re-pooling it here does not lose a reusable resource.
+     */
+    private void closeGapFillProducer(FlinkKafkaInternalProducer<byte[], byte[]> producer) {
+        producerCloseables.remove(producer);
+        try {
+            producer.close();
+        } catch (Exception e) {
+            LOG.warn("Failed to close intermediate transactional producer {}", producer, e);
+        }
     }
 
     private FlinkKafkaInternalProducer<byte[], byte[]> getOrCreateTransactionalProducer(
