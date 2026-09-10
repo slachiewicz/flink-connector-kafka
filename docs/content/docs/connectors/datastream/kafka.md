@@ -677,6 +677,30 @@ an explanation of the different guarantees.
   transaction.timeout.ms)>> maximum checkpoint duration + maximum restart duration or data loss may
   happen when Kafka expires an uncommitted transaction. 
 
+#### Transaction Naming Strategy
+
+When ```DeliveryGuarantee.EXACTLY_ONCE``` is used, ```KafkaSink``` names its Kafka transactions
+according to a ```TransactionNamingStrategy```, configured via ```setTransactionNamingStrategy(...)```.
+This choice has implications for the resource consumption on the Kafka broker, because every unique
+transactional id requires the broker to keep some metadata in memory until it expires (see the
+broker's ```transactional.id.expiration.ms```, 7 days by default).
+
+- ```INCREMENTING``` (the default): each transaction gets a brand-new transactional id derived from
+  the checkpoint id, and ids are never reused. This is the same behavior as in flink-connector-kafka
+  3.x. It is simple and requires no extra permissions, but it is wasteful on the broker: at a fast
+  checkpoint interval and/or high parallelism, the broker accumulates one transactional id per
+  subtask per checkpoint, retained for the full ```transactional.id.expiration.ms``` window, which can
+  grow broker memory usage substantially and was the root cause behind
+  [FLINK-33239](https://issues.apache.org/jira/browse/FLINK-33239).
+- ```POOLING``` (available since flink-connector-kafka 4.0): reuses a bounded pool of transactional
+  ids per subtask instead of minting a new one every checkpoint, which keeps broker-side resource
+  consumption bounded independent of the checkpoint interval. It requires a Kafka broker version 3.0
+  or newer and additional read permissions on the target topics. Switching from ```INCREMENTING``` to
+  ```POOLING``` is supported by first taking a checkpoint on flink-connector-kafka 4.x and then
+  switching strategies (or by restoring from a savepoint taken on any version).
+
+Switching from ```POOLING``` back to ```INCREMENTING``` is not supported.
+
 ### Monitoring
 
 Kafka sink exposes the following metrics in the respective [scope]({{< ref "docs/ops/metrics" >}}/#scope).

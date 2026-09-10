@@ -583,6 +583,25 @@ KafkaRecordSerializationSchema.builder() \
   完成时才会可见，因此请按需调整 checkpoint 的间隔。请确认事务 ID 的前缀（transactionIdPrefix）对不同的应用是唯一的，以保证不同作业的事务
   不会互相影响！此外，强烈建议将 Kafka 的事务超时时间调整至远大于 checkpoint 最大间隔 + 最大重启时间，否则 Kafka 对未提交事务的过期处理会导致数据丢失。
 
+#### 事务命名策略
+
+启用 ```DeliveryGuarantee.EXACTLY_ONCE``` 时，```KafkaSink``` 会根据 ```TransactionNamingStrategy```
+（通过 ```setTransactionNamingStrategy(...)``` 配置）来命名 Kafka 事务。这一选择会影响 Kafka broker 端的资源消耗，
+因为每一个不同的事务 ID 都需要 broker 在其过期（参见 broker 端配置 ```transactional.id.expiration.ms```，默认值为
+7 天）之前一直在内存中保留相关元数据。
+
+- ```INCREMENTING```（默认策略）：每个事务都会基于 checkpoint ID 生成一个全新且永不复用的事务 ID，这与
+  flink-connector-kafka 3.x 中的行为一致。该策略简单且不需要额外权限，但会给 broker 带来较大负担：在 checkpoint
+  间隔较短和/或并行度较高时，broker 会为每个 subtask 的每次 checkpoint 累积一个事务 ID，并在整个
+  ```transactional.id.expiration.ms``` 窗口期内一直保留，可能导致 broker 内存占用大幅增长，这正是
+  [FLINK-33239](https://issues.apache.org/jira/browse/FLINK-33239) 的根本原因。
+- ```POOLING```（自 flink-connector-kafka 4.0 起可用）：每个 subtask 复用一组数量有限的事务 ID，而不是每次
+  checkpoint 都生成新的 ID，从而使 broker 端的资源消耗与 checkpoint 间隔无关。该策略要求 Kafka broker 版本不低于
+  3.0，并且需要对目标 topic 具有额外的读权限。从 ```INCREMENTING``` 切换到 ```POOLING``` 的推荐做法是先在
+  flink-connector-kafka 4.x 上完成一次 checkpoint，然后再切换策略（也可以从任意版本生成的 savepoint 恢复）。
+
+不支持从 ```POOLING``` 切换回 ```INCREMENTING```。
+
 ### 监控
 
 Kafka sink 会在不同的[范围（Scope）]({{< ref "docs/ops/metrics" >}}/#scope)中汇报下列指标。
