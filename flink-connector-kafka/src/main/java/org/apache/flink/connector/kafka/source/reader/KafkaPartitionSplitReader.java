@@ -96,6 +96,9 @@ public class KafkaPartitionSplitReader
         consumerProps.putAll(props);
         consumerProps.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, createConsumerClientId(props));
         setConsumerClientRack(consumerProps, rackIdSupplier);
+        // Flink-internal options (e.g. partition.discovery.interval.ms) are not Kafka client
+        // configs; strip them so KafkaConsumer does not log them as unknown (FLINK-4004).
+        KafkaSourceOptions.removeInternalConfigOptions(consumerProps);
         this.consumer = new KafkaConsumer<>(consumerProps);
         this.stoppingOffsets = new HashMap<>();
         this.groupId = consumerProps.getProperty(ConsumerConfig.GROUP_ID_CONFIG);

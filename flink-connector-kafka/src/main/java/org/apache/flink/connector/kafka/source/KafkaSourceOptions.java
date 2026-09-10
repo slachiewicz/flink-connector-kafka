@@ -23,6 +23,8 @@ import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
 
@@ -77,10 +79,36 @@ public class KafkaSourceOptions {
                     .withDescription(
                             "Whether to verify topic id during runtime and fail if the topic is missing or recreated");
 
+    /**
+     * Options that configure {@code flink-connector-kafka} itself rather than the underlying Kafka
+     * client. These must not be forwarded to {@code KafkaConsumer} or {@code AdminClient}, which
+     * would otherwise log them as unknown configuration (see FLINK-4004).
+     */
+    private static final List<ConfigOption<?>> INTERNAL_CONFIG_OPTIONS =
+            Arrays.asList(
+                    CLIENT_ID_PREFIX,
+                    PARTITION_DISCOVERY_INTERVAL_MS,
+                    REGISTER_KAFKA_CONSUMER_METRICS,
+                    COMMIT_OFFSETS_ON_CHECKPOINT,
+                    POLL_TIMEOUT_MS,
+                    TOPIC_INTEGRITY_CHECK_ENABLED);
+
     @SuppressWarnings("unchecked")
     public static <T> T getOption(
             Properties props, ConfigOption<?> configOption, Function<String, T> parser) {
         String value = props.getProperty(configOption.key());
         return (T) (value == null ? configOption.defaultValue() : parser.apply(value));
+    }
+
+    /**
+     * Removes the Flink-internal {@link #INTERNAL_CONFIG_OPTIONS} keys from {@code props} in place.
+     * Call this on a copy of the user-supplied properties right before constructing a {@code
+     * KafkaConsumer} or Kafka {@code AdminClient}, so these connector-only options are not passed
+     * through to the Kafka client.
+     */
+    public static void removeInternalConfigOptions(Properties props) {
+        for (ConfigOption<?> option : INTERNAL_CONFIG_OPTIONS) {
+            props.remove(option.key());
+        }
     }
 }

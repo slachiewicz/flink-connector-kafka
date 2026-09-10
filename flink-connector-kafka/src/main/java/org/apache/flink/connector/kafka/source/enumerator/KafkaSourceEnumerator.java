@@ -595,6 +595,9 @@ public class KafkaSourceEnumerator
                 adminClientProps.getProperty(KafkaSourceOptions.CLIENT_ID_PREFIX.key());
         adminClientProps.setProperty(
                 ConsumerConfig.CLIENT_ID_CONFIG, clientIdPrefix + "-enumerator-admin-client");
+        // Flink-internal options (e.g. partition.discovery.interval.ms) are not Kafka client
+        // configs; strip them so AdminClient does not log them as unknown (FLINK-4004).
+        KafkaSourceOptions.removeInternalConfigOptions(adminClientProps);
         return AdminClient.create(adminClientProps);
     }
 
